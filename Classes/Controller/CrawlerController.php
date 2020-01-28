@@ -36,6 +36,8 @@ use AOE\Crawler\Domain\Repository\QueueRepository;
 use AOE\Crawler\Event\EventDispatcher;
 use AOE\Crawler\Utility\IconUtility;
 use AOE\Crawler\Utility\SignalSlotUtility;
+use DmitryDulepov\Realurl\Configuration\ConfigurationReader;
+use DmitryDulepov\Realurl\Encoder\UrlEncoder;
 use TYPO3\CMS\Backend\Tree\View\PageTreeView;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
@@ -442,8 +444,18 @@ class CrawlerController
         // realurl support (thanks to Ingo Renner)
         if (ExtensionManagementUtility::isLoaded('realurl') && $vv['subCfg']['realurl']) {
 
-            /** @var tx_realurl $urlObj */
-            $urlObj = GeneralUtility::makeInstance('tx_realurl');
+            /** @var ConfigurationReader $urlObj */
+            $urlObj = GeneralUtility::makeInstance(ConfigurationReader::class, [$mode => 0]);
+
+            $GLOBALS['TSFE'] = GeneralUtility::makeInstance(TypoScriptFrontendController::class,
+                $GLOBALS['TYPO3_CONF_VARS'],
+                $GLOBALS['TSFE']->tmpl->rootLine[0]['uid'], 0);
+            $GLOBALS['TSFE']->sys_page = GeneralUtility::makeInstance(PageRepository::class);
+            $GLOBALS['TSFE']->sys_page->init(true);
+            $GLOBALS['TSFE']->connectToDB();
+            $GLOBALS['TSFE']->initFEuser();
+            $GLOBALS['TSFE']->determineId();
+            $GLOBALS['TSFE']->initTemplate();
 
             if (!empty($vv['subCfg']['baseUrl'])) {
                 $urlParts = parse_url($vv['subCfg']['baseUrl']);
@@ -472,6 +484,11 @@ class CrawlerController
             $configurationHash = $this->getConfigurationHash($vv);
             $skipInnerCheck = $this->noUnprocessedQueueEntriesForPageWithConfigurationHashExist($pageRow['uid'], $configurationHash);
 
+            $urlEncoder = GeneralUtility::makeInstance(UrlEncoder::class);
+
+            $GLOBALS['TSFE']->config['config']['tx_realurl_enable'] = 1;
+            $GLOBALS['TSFE']->register['tx_realurl_enable'] = 1;
+            
             foreach ($vv['URLs'] as $urlQuery) {
                 if ($this->drawURLs_PIfilter($vv['subCfg']['procInstrFilter'], $incomingProcInstructions)) {
 
@@ -494,7 +511,8 @@ class CrawlerController
                             ],
                             'TCEmainHook' => true,
                         ];
-                        $urlObj->encodeSpURL($params);
+
+                        $urlEncoder->encodeUrl($params);
                         $urlQuery = $params['LD']['totalURL'];
                     }
 
